@@ -1,0 +1,41 @@
+function parsePayload(payload) {
+  let latitude = null;
+  let longitude = null;
+
+  payload.forEach((item) => {
+    // Captura e converte Latitude para número decimal
+    if (item.variable === "Latitude") {
+      latitude = parseFloat(item.value); // Converte string para número
+      latitude = latitude / 100000; // Ajusta para escala correta
+      item.value = latitude; // Atualiza o valor no payload
+    }
+
+    // Captura e converte Longitude para número decimal
+    if (item.variable === "Longitude") {
+      longitude = parseFloat(item.value); // Converte string para número
+      longitude = longitude / 100000; // Ajusta para escala correta
+      item.value = longitude; // Atualiza o valor no payload
+    }
+  });
+
+  // Cria a variável "location" se ambos os valores de latitude e longitude forem encontrados
+  if (latitude !== null && longitude !== null) {
+    payload.push({
+      variable: "location",
+      value: "Boi Nelore - Nasc. 06/2018 - Peso ~ 570kg", // Descrição ou nome
+      location: {
+        lat: latitude, // Latitude ajustada
+        lng: longitude, // Longitude ajustada
+      },
+    });
+    console.log("Variável location criada:", { lat: latitude, lng: longitude });
+  } else {
+    console.log("Latitude ou Longitude ausentes. Variável location não criada.");
+  }
+
+  return payload;
+}
+
+// Executa o parser e retorna o payload ajustado
+const data = parsePayload(payload);
+

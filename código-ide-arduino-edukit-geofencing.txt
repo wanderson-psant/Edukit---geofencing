@@ -1,0 +1,110 @@
+#include <SoftwareSerial.h>       // Biblioteca para comunicação serial por software
+#include <TinyGPS++.h>            // Biblioteca para o GPS
+
+// Definição de pinos
+#define RESET 4       // Reset no HT32SX
+#define TX 2          // Serial TX 
+#define RX 3          // Serial RX
+#define GPS_RX 6      // Pino de recepção para o GPS
+#define GPS_TX 7      // Pino de transmissão para o GPS
+#define LED 13        // Led no Arduino Nano
+#define SW1 5         // Botão na Placa EDUKIt
+
+SoftwareSerial serial_HT(RX, TX); // Serial para comunicação com o HT32SX
+SoftwareSerial gpsSerial(GPS_RX, GPS_TX); // Serial para comunicação com o GPS
+TinyGPSPlus gps;                  // Objeto GPS
+
+int Contador = 0;                 // Variável do contador
+int16_t Temperatura = 1000;       // Temperatura em 0,01ºC (1000 representa 10,00ºC)
+
+void setup() {
+  pinMode(RESET, OUTPUT);
+  pinMode(SW1, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
+
+  Serial.begin(9600);             // Inicializa serial para monitoramento
+  serial_HT.begin(9600);          // Inicializa serial para o HT32SX
+  gpsSerial.begin(9600);          // Inicializa serial para o GPS
+
+  Serial.println("Inicializando...");
+  reset_HT();                     // Reinicia o módulo HT32SX
+
+  delay(8000);                    // Aguarda o módulo Sigfox iniciar
+  serial_HT.print("AT+CFGRCZ=2;"); // Configura o módulo Sigfox para região RCZ2
+}
+
+void loop() {
+  char buf[50];
+
+  // Leitura dos dados do GPS
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
+
+  if (digitalRead(SW1) == LOW) {  // Verifica se o botão foi pressionado
+    digitalWrite(LED, HIGH);
+    Contador++;
+    Temperatura += 33;  // Aumenta a temperatura em 0,33°C (representado por 33)
+
+    if (gps.location.isValid()) {  // Verifica se a localização do GPS é válida
+      float latitude = gps.location.lat();
+      float longitude = gps.location.lng();
+
+      // Formata a string de envio com contador, temperatura, latitude e longitude
+      sprintf(buf, "AT+SEND=0:%02x%04x%08lx%08lx;", 
+              Contador, Temperatura, 
+              (int32_t)(latitude * 100000), 
+              (int32_t)(longitude * 100000));
+
+      Serial.println("Enviando dados ao Sigfox: ");
+      Serial.println(buf);
+
+      serial_HT.print(buf);  // Envia os dados ao Sigfox
+
+      // Exibe no monitor serial
+      Serial.print("{ \"Contador\": ");
+      Serial.print(Contador);
+      Serial.print(", \"Temperatura\": ");
+      Serial.print(Temperatura / 100.0);
+      Serial.print(", \"Latitude\": ");
+      Serial.print(latitude, 6);
+      Serial.print(", \"Longitude\": ");
+      Serial.print(longitude, 6);
+      Serial.println(" }");
+    } else {
+      Serial.println("GPS não disponível.");
+    }
+
+    delay_msg();
+    while (!digitalRead(SW1)) delay(10);  // Espera o botão ser solto
+    digitalWrite(LED, LOW);
+  }
+}
+
+// Função de reset para o módulo HT32SX
+void reset_HT() {
+  digitalWrite(RESET, HIGH);
+  delay(1000);
+  digitalWrite(RESET, LOW);
+  delay(100);
+}
+
+// Função de espera com feedback de LED para novo envio
+void delay_msg() {
+  digitalWrite(LED, HIGH);
+  Serial.println("Aguarde 45 segundos ou até o LED apagar...");
+  uint16_t i;
+
+  for (i = 0; i < 45000; i++) {
+    if (serial_HT.available()) {
+      String resposta = serial_HT.readString();
+      Serial.print(resposta);
+      if (resposta.indexOf("AT_cmd_Waiting...") > 0) {
+        break;
+      }
+    }
+    delay(1);
+  }
+  digitalWrite(LED, LOW);
+  Serial.println("Pronto para novo comando.");
+}
